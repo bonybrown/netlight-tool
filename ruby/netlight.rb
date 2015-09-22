@@ -60,7 +60,13 @@ class Parser
     return args
   end
 end
-options = Parser.parse ARGV
+
+begin
+  options = Parser.parse ARGV
+rescue OptionParser::InvalidArgument => e
+  puts e.message
+  exit 1
+end
 
 options.device_address = ARGV[0]
 

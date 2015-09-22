@@ -10,7 +10,7 @@ class NetlightComms
   attr_reader :device_id, :version_major, :version_minor
   
   def initialize( address )
-    @socket = TCPSocket.new address, 3602
+    @socket = TCPSocket.new address, 3601
     @device_id = @socket.gets("\0")
     @version_major,@version_minor= @socket.read(2).unpack('CC')
     @iv = @socket.read(16)
@@ -34,7 +34,9 @@ class NetlightComms
   def send_message( message )
     message = message.to_s if message.respond_to? :to_s
     message = encrypt_message( message ) if comms_encrypted?
-    @socket.write(message)
+    header = [0x17,@version_major,@version_minor, message.length]
+    puts message.unpack('H*')
+    @socket.write(header.pack('CCCS<') + message)
   end  
   
   def master_key
@@ -50,8 +52,6 @@ class NetlightComms
     cipher.key = master_key
     cipher.iv = sender_iv
     encrypted_block = cipher.update(message+message_hash) + cipher.final
-    data_block = sender_iv + encrypted_block
-    header = [0x17,@version_major,@version_minor, data_block.length]
-    header.pack('CCCS<') + data_block
+    sender_iv + encrypted_block
   end
 end

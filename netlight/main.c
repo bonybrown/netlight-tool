@@ -12,6 +12,8 @@
 
 #define NETLIGHT_TCP_PORT 3601
 
+#define PROTOCOL_VERSION_MAJOR 1
+#define PROTOCOL_VERSION_MINOR 0
 
 #define BUFFER_SIZE 64
 
@@ -83,22 +85,36 @@ void netlight_send(char *netlight_address, int unit, uint32_t color, int sound, 
   
   /* reply back */
   memset(buffer,0,BUFFER_SIZE);
-  buffer[0] = 0;//function 0
-  buffer[1] = (uint8_t)unit;
-  buffer[2] = (uint8_t) ( color >> 16 );
-  buffer[3] = (uint8_t) ( color >> 8 );
-  buffer[4] = (uint8_t) ( color );
-  buffer[5] = (uint8_t) (sound | (sound_repeat << 4)); //sound
-  buffer[6] = (uint8_t) ( timeout );
-  buffer[7] = (uint8_t) ( timeout >> 8 );
-  buffer[8] = (uint8_t) ( timeout >> 16 );
-  buffer[9] = (uint8_t) ( timeout >> 24 );
-  buffer[10] = (uint8_t) ( future_color >> 16 );
-  buffer[11] = (uint8_t) ( future_color >> 8 );
-  buffer[12] = (uint8_t) ( future_color );
-  buffer[13] = (uint8_t) (future_sound | (future_sound_repeat << 4 )); //future sound
+  n=0;
+  buffer[n++] = 0x17; //frame header
+  /*version*/
+  buffer[n++] = PROTOCOL_VERSION_MAJOR;
+  buffer[n++] = PROTOCOL_VERSION_MINOR;
   
-  n = write(sockfd,buffer,14);
+  /*size - offsets 3 &4 , small endian*/
+  buffer[n++] = 0x00;
+  buffer[n++] = 0x00;
+  
+  buffer[n++] = 0;//function 0
+  buffer[n++] = (uint8_t)unit;
+  buffer[n++] = (uint8_t) ( color >> 16 );
+  buffer[n++] = (uint8_t) ( color >> 8 );
+  buffer[n++] = (uint8_t) ( color );
+  buffer[n++] = (uint8_t) (sound | (sound_repeat << 4)); //sound
+  buffer[n++] = (uint8_t) ( timeout );
+  buffer[n++] = (uint8_t) ( timeout >> 8 );
+  buffer[n++] = (uint8_t) ( timeout >> 16 );
+  buffer[n++] = (uint8_t) ( timeout >> 24 );
+  buffer[n++] = (uint8_t) ( future_color >> 16 );
+  buffer[n++] = (uint8_t) ( future_color >> 8 );
+  buffer[n++] = (uint8_t) ( future_color );
+  buffer[n++] = (uint8_t) (future_sound | (future_sound_repeat << 4 )); //future sound
+  
+  size_t packet_length = n - 5; /* for packet_type, prot_maj/min, size */
+  buffer[3] = packet_length & 0xff;
+  buffer[4] = packet_length >> 8;
+  
+  n = write(sockfd,buffer,n);
   if (n < 0){
     error("ERROR writing to socket");
   }

@@ -35,7 +35,6 @@ class NetlightComms
     message = message.to_s if message.respond_to? :to_s
     message = encrypt_message( message ) if comms_encrypted?
     header = [0x17,@version_major,@version_minor, message.length]
-    puts message.unpack('H*')
     @socket.write(header.pack('CCCS<') + message)
   end  
   

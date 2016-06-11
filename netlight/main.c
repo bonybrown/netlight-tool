@@ -4,11 +4,8 @@
 #include <getopt.h>
 #include <stdint.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
 #include <string.h>
-
+#include "network.h"
 
 #define NETLIGHT_TCP_PORT 3601
 
@@ -40,47 +37,33 @@ void error(char *msg)
 
 
 void netlight_send(char *netlight_address, int unit, uint32_t color, int sound, int sound_repeat, uint32_t timeout, uint32_t future_color, int future_sound, int future_sound_repeat  ){
-  int sockfd, n;
-  struct sockaddr_in sin;
-  struct hostent *server;
+
+  struct network_socket *sock;
+  sock = network_tcp_connect_to(netlight_address, NETLIGHT_TCP_PORT);
+  if(! network_valid_socket(sock)){
+    return;
+  }
+
+  int n;
   uint8_t buffer[BUFFER_SIZE];
-  
-  sockfd = socket(PF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0){
-    error("ERROR opening socket");
-  }
-  server = gethostbyname(netlight_address);
-  if (server == NULL)
-  {
-    error("No such host");
-  }
-  memset((char *) &sin,0, sizeof(sin));
-  sin.sin_family = AF_INET;
-  memcpy(&sin.sin_addr,
-	 server->h_addr,
-	 server->h_length);
-  sin.sin_port = htons(NETLIGHT_TCP_PORT);
-  if (connect(sockfd,(struct sockaddr *)&sin,sizeof(sin)) < 0){
-    error("ERROR connecting");
-  }
   memset(buffer,0,BUFFER_SIZE);
-  
+
   /* On connection, the netlight sends:
    * a nul-terminated string of it's model number
    * a one-byte protocol id
    * 16 random bytes. These can be used as an IV for encrypted comms
    */
-  n = read(sockfd,buffer,BUFFER_SIZE);
+  n = network_receive(sock,buffer,BUFFER_SIZE);
   if( strncmp("NL5", (char*)buffer, 10) != 0 )
   {
     error("Did not find NL5");
   }
-  
+
   /* protocol check */
   if( buffer[4] != 1 ){
     error("Cannot communicate with NL5; wrong protocol id");
   }
-  
+
   /* reply back */
   memset(buffer,0,BUFFER_SIZE);
   buffer[0] = 0;//function 0
@@ -97,12 +80,12 @@ void netlight_send(char *netlight_address, int unit, uint32_t color, int sound, 
   buffer[11] = (uint8_t) ( future_color >> 8 );
   buffer[12] = (uint8_t) ( future_color );
   buffer[13] = (uint8_t) (future_sound | (future_sound_repeat << 4 )); //future sound
-  
-  n = write(sockfd,buffer,14);
+
+  n = network_send(sock,buffer,14);
   if (n < 0){
     error("ERROR writing to socket");
   }
-  close(sockfd);
+  network_close(sock);
 }
 
 int map_sound( char * sound ){
@@ -158,6 +141,7 @@ int main(int argc, char *argv[]) {
 	{"sound-repeat", required_argument, 0, 'r'},
 	{0,0,0,0}
     };
+
     //Specifying the expected options
     //The two options l and b expect numbers as argument
     int option_index = 0;
@@ -167,17 +151,17 @@ int main(int argc, char *argv[]) {
 		 //flag set
 		 break;
              case 'C' :
-	         future_color = strtol(optarg,NULL,16); 
+	         future_color = strtol(optarg,NULL,16);
 		 future_color_set = 1;
                  break;
              case 'T' :
-		 timeout = atoi(optarg); 
+		 timeout = atoi(optarg);
                  break;
-             case 'c' : 
-	         color = strtol(optarg,NULL,16); 
+             case 'c' :
+	         color = strtol(optarg,NULL,16);
 		 color_set = 1;
                  break;
-             case 'u' : 
+             case 'u' :
 	         unit = atoi(optarg);
                  break;
 	     case 's' :
@@ -210,11 +194,11 @@ int main(int argc, char *argv[]) {
 		   future_sound_repeat = atoi(optarg);
 		 }
 		 break;
-             default: print_usage(); 
+             default: print_usage();
                  exit(EXIT_FAILURE);
         }
     }
-    
+
     if (optind >= argc || argv[optind] == NULL ) {
       puts("ERROR: Target NetLight network address required");
       print_usage();
@@ -224,26 +208,29 @@ int main(int argc, char *argv[]) {
     {
       netlight_address = argv[optind];
     }
-    
+
     if (unit == -1 || color_set == 0) {
         print_usage();
         exit(EXIT_FAILURE);
     }
-    
+
     if ( timeout != 0 && future_color_set == 0 ){
       puts("ERROR: A future-color value is required if a timeout is set");
       exit(EXIT_FAILURE);
     }
-    
+
     if ((future_color_set || future_sound || future_sound_repeat) && timeout == 0 ){
       puts("ERROR: A timeout is required if any future value is set");
       exit(EXIT_FAILURE);
     }
 
-    
+    network_init();
+
     netlight_send( netlight_address, unit, color, sound, sound_repeat, timeout, future_color , future_sound, future_sound_repeat);
-        
-    
+
+
+    network_exit();
+
     return 0;
 }
 
